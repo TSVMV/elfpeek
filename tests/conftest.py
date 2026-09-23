@@ -159,3 +159,105 @@ SYM_FMT_64 = "IBBHQQ"
 @pytest.fixture
 def elf_bytes() -> bytes:
     return build_elf64()
+
+
+def build_pe32plus(
+    *,
+    dlls: tuple[str, ...] = ("KERNEL32.dll",),
+    imports: tuple[str, ...] = ("GetProcAddress", "ExitProcess"),
+    exports: tuple[str, ...] = ("MyExport",),
+    machine: int = 0x8664,
+    entry: int = 0x1000,
+    image_base: int = 0x140000000,
+    characteristics: int = 0x0002,
+    dll_characteristics: int = 0x0040 | 0x0020 | 0x0100 | 0x0080 | 0x4000,
+) -> bytes:
+    """Build a minimal but valid 64-bit PE with import and export directories."""
+    dos = bytearray(64)
+    dos[0:2] = b"MZ"
+    struct.pack_into("<I", dos, 0x3C, 0x40)
+
+    coff = struct.pack(
+        "<HHIIIHH", machine, 2, 0, 0, 0, 240, characteristics
+    )
+
+    opt = bytearray(240)
+    struct.pack_into("<H", opt, 0, 0x20B)
+    struct.pack_into("<HH", opt, 2, 14, 0)
+    struct.pack_into("<I", opt, 4, 0x80)
+    struct.pack_into("<I", opt, 8, 0x200)
+    struct.pack_into("<I", opt, 16, entry)
+    struct.pack_into("<I", opt, 20, 0x1000)
+    struct.pack_into("<Q", opt, 24, image_base)
+    struct.pack_into("<I", opt, 32, 0x1000)
+    struct.pack_into("<I", opt, 36, 0x200)
+    struct.pack_into("<H", opt, 68, 3)
+    struct.pack_into("<H", opt, 70, dll_characteristics)
+    struct.pack_into("<Q", opt, 72, 0x100000)
+    struct.pack_into("<Q", opt, 80, 0x1000)
+    struct.pack_into("<Q", opt, 88, 0x100000)
+    struct.pack_into("<Q", opt, 96, 0x1000)
+    struct.pack_into("<I", opt, 108, 16)
+    struct.pack_into("<II", opt, 112, 0x2100, 0x40)  # export directory
+    struct.pack_into("<II", opt, 120, 0x2000, 0x40)  # import directory
+
+    prefix = bytes(dos) + b"PE\x00\x00" + coff + bytes(opt)
+    text = b"\xcc" * 0x80
+    data_size = 0x200
+
+    # Section headers sit right after the optional header; raw data is page-aligned.
+    text_off = (len(prefix) + 80 + 0xFF) & ~0xFF
+    rdata_off = text_off + len(text)
+    pad = text_off - (len(prefix) + 80)
+
+    text_hdr = struct.pack(
+        "<8sIIIIIIHHI", b".text", 0x80, 0x1000, len(text), text_off, 0, 0, 0, 0, 0x60000060
+    )
+    rdata_hdr = struct.pack(
+        "<8sIIIIIIHHI", b".rdata", data_size, 0x2000, data_size, rdata_off, 0, 0, 0, 0, 0x40000040
+    )
+
+    rdata = bytearray(data_size)
+    base = 0x2000
+    desc_off, ilt_off, dll_off = 0x00, 0x30, 0x60
+    # Import lookup table entries point at hint/name pairs laid out dynamically.
+    hint_name_rvas: list[int] = []
+    cursor = 0x70
+    for name in imports:
+        hint_name_rvas.append(base + cursor)
+        struct.pack_into("<H", rdata, cursor, 0)
+        cursor += 2
+        rdata[cursor : cursor + len(name) + 1] = (name + "\x00").encode()
+        cursor += len(name) + 1
+        cursor = (cursor + 3) & ~3
+    for i, rva in enumerate(hint_name_rvas):
+        struct.pack_into("<Q", rdata, ilt_off + i * 8, rva)
+    struct.pack_into("<Q", rdata, ilt_off + len(hint_name_rvas) * 8, 0)
+    rdata[dll_off : dll_off + 12] = (dlls[0] + "\x00").encode()[:12]
+    struct.pack_into(
+        "<IIIII", rdata, desc_off, ilt_off + base, 0, 0, dll_off + base, ilt_off + base
+    )
+    # Export directory (rva 0x2100).
+    struct.pack_into(
+        "<IIHHIIIIIII",
+        rdata,
+        0x100,
+        0,
+        0,
+        0,
+        0,
+        0x2140,
+        0,
+        len(exports),
+        len(exports),
+        0x2148,
+        0x2150,
+        0x2158,
+    )
+    rdata[0x140 : 0x140 + 16] = (dlls[0] + "\x00").encode()[:16]
+    struct.pack_into("<I", rdata, 0x148, 0x1000)
+    struct.pack_into("<I", rdata, 0x150, 0x2160)
+    struct.pack_into("<I", rdata, 0x158, 0)
+    rdata[0x160 : 0x160 + 16] = (exports[0] + "\x00").encode()[:16]
+
+    return prefix + text_hdr + rdata_hdr + b"\x00" * pad + text + bytes(rdata)

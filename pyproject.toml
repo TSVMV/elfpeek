@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "elfpeek"
-version = "0.1.0"
-description = "Parse an ELF binary and render it as a structural map: section/segment layout, entry, dependencies and symbols."
+version = "0.2.0"
+description = "Parse ELF/PE binaries and render them as a structural map: section layout, entry point, dependencies, symbols, hardening features, entropy and strings."
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"

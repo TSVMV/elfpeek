@@ -42,6 +42,13 @@ def test_html_renders_tables(elf_bytes):
     assert "libc.so.6" in html
 
 
+def test_high_entropy_section_is_marked(elf_bytes):
+    elf = parse(elf_bytes)
+    elf.sections[1].entropy = 7.6
+    assert "（高熵）" in render_terminal(elf)
+    assert "高熵" in render_html(elf)
+
+
 def test_html_layout_has_section_rects(elf_bytes):
     elf = parse(elf_bytes)
     html = render_html(elf)

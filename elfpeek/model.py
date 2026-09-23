@@ -13,6 +13,8 @@ __all__ = [
     "SYMBOL_TYPE_NAMES",
     "TYPE_NAMES",
     "ElfFile",
+    "PEFile",
+    "PESection",
     "Section",
     "Segment",
     "Symbol",
@@ -110,6 +112,31 @@ MACHINE_NAMES: dict[int, str] = {
     243: "RISC-V",
 }
 
+PE_MACHINE_NAMES: dict[int, str] = {
+    0x14C: "x86",
+    0x8664: "x86_64",
+    0xAA64: "AArch64",
+    0x1C0: "ARM Thumb",
+}
+
+PE_SUBSYSTEM_NAMES: dict[int, str] = {
+    1: "原生",
+    2: "Windows 图形",
+    3: "Windows 控制台",
+    7: "POSIX",
+    9: "Windows CE",
+    10: "EFI 应用",
+}
+
+PE_SECTION_FLAG_TEXT = {
+    0x00000020: "C",  # CNT_CODE
+    0x00000040: "D",  # CNT_INITIALIZED_DATA
+    0x00000080: "U",  # CNT_UNINITIALIZED_DATA
+    0x20000000: "X",  # MEM_EXECUTE
+    0x40000000: "R",  # MEM_READ
+    0x80000000: "W",  # MEM_WRITE
+}
+
 
 @dataclass
 class Section:
@@ -126,6 +153,7 @@ class Section:
     info: int
     addralign: int
     entsize: int
+    entropy: float = 0.0
 
     @property
     def flags_text(self) -> str:
@@ -208,6 +236,9 @@ class ElfFile:
     needed: list[str] = field(default_factory=list)
     symbols: list[Symbol] = field(default_factory=list)
     soname: str = ""
+    dt_flags: int = 0
+    dt_flags_1: int = 0
+    strings: list = field(default_factory=list)
 
     @property
     def type_name(self) -> str:
@@ -234,3 +265,67 @@ class ElfFile:
     @property
     def exported_functions(self) -> list[Symbol]:
         return [sym for sym in self.functions if sym.shndx != 0]
+
+
+@dataclass
+class PESection:
+    """One PE/COFF section header."""
+
+    name: str
+    virtual_address: int
+    virtual_size: int
+    raw_offset: int
+    raw_size: int
+    flags: int
+    entropy: float = 0.0
+
+    @property
+    def flags_text(self) -> str:
+        return "".join(
+            char for bit, char in PE_SECTION_FLAG_TEXT.items() if self.flags & bit
+        )
+
+    @property
+    def is_code(self) -> bool:
+        return bool(self.flags & 0x00000020)
+
+
+@dataclass
+class PEFile:
+    """Parsed view of a PE/COFF binary."""
+
+    path: str
+    size: int
+    is_64: bool
+    type: int  # 0x2000 DLL, 0x0002 EXEC
+    machine: int
+    entry: int
+    image_base: int
+    subsystem: int
+    dll_characteristics: int
+    characteristics: int
+    sections: list[PESection] = field(default_factory=list)
+    needed: list[str] = field(default_factory=list)
+    exports: list[str] = field(default_factory=list)
+    imports: list[str] = field(default_factory=list)
+    strings: list = field(default_factory=list)
+
+    @property
+    def type_name(self) -> str:
+        if self.type & 0x2000:
+            return "动态链接库"
+        if self.type & 0x0002:
+            return "可执行"
+        return "未知"
+
+    @property
+    def machine_name(self) -> str:
+        return PE_MACHINE_NAMES.get(self.machine, f"0x{self.machine:x}")
+
+    @property
+    def subsystem_name(self) -> str:
+        return PE_SUBSYSTEM_NAMES.get(self.subsystem, str(self.subsystem))
+
+    @property
+    def little_endian(self) -> bool:
+        return True

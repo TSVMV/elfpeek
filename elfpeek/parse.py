@@ -34,6 +34,8 @@ SHT_STRTAB = 3
 DT_NULL = 0
 DT_NEEDED = 1
 DT_SONAME = 14
+DT_FLAGS = 30
+DT_FLAGS_1 = 0x6FFFFFFB
 
 
 class ParseError(ValueError):
@@ -228,6 +230,10 @@ def _parse_dynamic(data: bytes, elf: ElfFile, endian: str) -> None:
                 elf.needed.append(name)
         elif d_tag == DT_SONAME and str_blob:
             elf.soname = _read_str(str_blob, d_val)
+        elif d_tag == DT_FLAGS:
+            elf.dt_flags = d_val
+        elif d_tag == DT_FLAGS_1:
+            elf.dt_flags_1 = d_val
 
 
 def _section_blob(data: bytes, elf: ElfFile, name: str) -> bytes:
