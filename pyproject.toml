@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "elfpeek"
+version = "0.1.0"
+description = "Parse an ELF binary and render it as a structural map: section/segment layout, entry, dependencies and symbols."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+keywords = ["elf", "binary", "visualization", "reverse-engineering", "blue-team", "static-analysis"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: POSIX :: Linux",
+    "Topic :: Software Development :: Disassemblers",
+]
+dependencies = []
+
+[project.scripts]
+elfpeek = "elfpeek.cli:main"
+
+[project.optional-dependencies]
+test = ["pytest"]
+
+[tool.setuptools.packages.find]
+include = ["elfpeek*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+ignore = ["B905", "FLY002"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["E501"]
